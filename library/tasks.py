@@ -1,12 +1,29 @@
 from celery import shared_task
 from .models import Loan
-from django.core.mail import send_mail
+from django.core.mail import send_mail, send_mass_mail
 from django.conf import settings
+from django.utils import timezone
+from django.db import transaction
+from smtplib import SMTPConnectError
+from logging import getLogger
 
-@shared_task
-def send_loan_notification(loan_id):
-    try:
-        loan = Loan.objects.get(id=loan_id)
+
+logger = getLogger()
+
+
+@shared_task(
+    bind=True,
+    auto_retry_on=[ConnectionError, SMTPConnectError],
+    retry_backoff=True,
+    retry_jitter=True,
+)
+def send_loan_notification(self, loan_id):
+    with transaction.atomic():
+        loan = Loan.objects.select_for_update().get(id=loan_id)
+        if loan.is_notified:
+            logger.warning(f"Loan {loan.pk} is already notified")
+            return
+
         member_email = loan.member.user.email
         book_title = loan.book.title
         send_mail(
@@ -16,5 +33,22 @@ def send_loan_notification(loan_id):
             recipient_list=[member_email],
             fail_silently=False,
         )
-    except Loan.DoesNotExist:
-        pass
+        loan.is_notified = True
+        loan.save()
+
+
+@shared_task
+def check_overdue_loans():
+    today = timezone.now().date
+    due_loans = Loan.objects.filter(due_date__lt=today, is_returned=False)
+
+    mass_emails_data = [
+        (
+            'Book Loaned Successfully',
+            f'Hello {loan.member.user.username},\n\nYou have to return loaned "{loan.book.title}".\nPlease return it as soon as possible',
+            settings.DEFAULT_FROM_EMAIL,
+            [loan.member.user.email]
+        )
+        for loan in due_loans
+    ]
+    send_mass_mail(mass_emails_data)

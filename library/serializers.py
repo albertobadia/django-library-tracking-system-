@@ -45,3 +45,7 @@ class LoanSerializer(serializers.ModelSerializer):
     class Meta:
         model = Loan
         fields = ['id', 'book', 'book_id', 'member', 'member_id', 'loan_date', 'return_date', 'is_returned']
+
+
+class LoanExtendDueDateSerializer(serializers.Serializer):
+    additional_days = serializers.PositiveIntegerSerializer()

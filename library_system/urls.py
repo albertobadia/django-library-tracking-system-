@@ -5,7 +5,7 @@ from library import views
 
 router = routers.DefaultRouter()
 router.register(r'authors', views.AuthorViewSet)
-router.register(r'books', views.BookViewSet)
+router.register(r'books', views.BookViewSet, basename="books")
 router.register(r'members', views.MemberViewSet)
 router.register(r'loans', views.LoanViewSet)
 
